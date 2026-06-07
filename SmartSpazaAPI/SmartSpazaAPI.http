@@ -1,0 +1,6 @@
+@SmartSpazaAPI_HostAddress = http://localhost:5223
+
+GET {{SmartSpazaAPI_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

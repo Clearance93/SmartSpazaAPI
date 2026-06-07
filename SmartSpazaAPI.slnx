@@ -1,0 +1,13 @@
+<Solution>
+  <Project Path="SmartCore/SmartCore.csproj" />
+  <Project Path="SmartData/SmartData.csproj" />
+  <Project Path="SmartDto/SmartDto.csproj" />
+  <Project Path="SmartEnums/SmartEnums.csproj" />
+  <Project Path="SmartInterfaces/SmartInterfaces.csproj" />
+  <Project Path="SmartModels/SmartModels.csproj" />
+  <Project Path="SmartRepository/SmartRepository.csproj" />
+  <Project Path="SmartServices/SmartServices.csproj" />
+  <Project Path="SmartSpazaAPI/SmartSpazaAPI.csproj" />
+  <Project Path="SmartStatistics/SmartStatistics.csproj" />
+  <Project Path="SmartUtility/SmartUtility.csproj" />
+</Solution>
