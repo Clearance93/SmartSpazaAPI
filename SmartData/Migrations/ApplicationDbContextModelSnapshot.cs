@@ -17,7 +17,7 @@ namespace SmartData.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.8")
+                .HasAnnotation("ProductVersion", "10.0.14")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -726,9 +726,13 @@ namespace SmartData.Migrations
 
                     b.HasKey("ProductId");
 
-                    b.HasIndex("Barcode")
+                    b.HasIndex("Barcode", "ShopOwnerId")
                         .IsUnique()
-                        .HasFilter("[Barcode] IS NOT NULL AND [IsDeleted] = 0");
+                        .HasFilter("[Barcode] IS NOT NULL AND [ShopOwnerId] IS NOT NULL AND [IsDeleted] = 0");
+
+                    b.HasIndex("Barcode", "SupplierId")
+                        .IsUnique()
+                        .HasFilter("[Barcode] IS NOT NULL AND [SupplierId] IS NOT NULL AND [IsDeleted] = 0");
 
                     b.ToTable("Products");
                 });

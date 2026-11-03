@@ -67,9 +67,13 @@ namespace SmartData
             builder.Entity<Navigation>().HasIndex(navigation => navigation.DriverId);
             builder.Entity<Vehicle>().HasIndex(vehicle => vehicle.DriverId);
             builder.Entity<Availability>().HasIndex(availability => availability.Uid);
-            builder.Entity<Product>().HasIndex(product => product.Barcode)
+            builder.Entity<Product>().HasIndex(product => new { product.Barcode, product.ShopOwnerId })
                                       .IsUnique()
-                                      .HasFilter("[Barcode] IS NOT NULL AND [IsDeleted] = 0");
+                                      .HasFilter("[Barcode] IS NOT NULL AND [ShopOwnerId] IS NOT NULL AND [IsDeleted] = 0");
+
+            builder.Entity<Product>().HasIndex(product => new { product.Barcode, product.SupplierId })
+                                      .IsUnique()
+                                      .HasFilter("[Barcode] IS NOT NULL AND [SupplierId] IS NOT NULL AND [IsDeleted] = 0");
 
             builder.Entity<RefreshToken>(entity =>
             {

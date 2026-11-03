@@ -50,7 +50,7 @@ namespace SmartSpazaAPI.Tests
         {
             var (service, productRepository) = CreateService();
 
-            productRepository.Setup(r => r.GetByBarcodeAsync(It.IsAny<string>()))
+            productRepository.Setup(r => r.GetByBarcodeAsync(It.IsAny<string>(), It.IsAny<Guid>()))
                              .ReturnsAsync(new Product { ProductId = Guid.NewGuid(), Barcode = "123" });
 
             await Assert.ThrowsAsync<ConflictException>(

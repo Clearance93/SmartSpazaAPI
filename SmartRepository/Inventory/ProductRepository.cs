@@ -14,16 +14,28 @@ namespace SmartRepository.Inventory
             _Context = context ?? throw new ArgumentNullException(nameof(context));
         }
 
-        public async Task<Product?> GetByBarcodeAsync(string barcode)
+        /// <summary>
+        /// Looks up a barcode only inside the caller's own catalogue, so one business
+        /// can never see or sell another business's product.
+        /// </summary>
+        public async Task<Product?> GetByBarcodeAsync(string barcode, Guid ownerId)
         {
-            return await _Context.Products.FirstOrDefaultAsync(product => product.Barcode == barcode && !product.IsDeleted);
+            return await _Context.Products
+                .FirstOrDefaultAsync(product =>
+                    product.Barcode == barcode &&
+                    !product.IsDeleted &&
+                    (product.ShopOwnerId == ownerId || product.SupplierId == ownerId));
         }
 
-        public async Task<(IEnumerable<Product> Items, int TotalCount)> GetPagedActiveProductsAsync(int page, int pageSize, Guid id)
+        public async Task<(IEnumerable<Product> Items, int TotalCount)> GetPagedActiveProductsAsync(
+            int page,
+            int pageSize,
+            Guid ownerId)
         {
             var query = _Context.Products
                                 .AsNoTracking()
-                                .Where(product => !product.IsDeleted)
+                                .Where(product => !product.IsDeleted &&
+                                                  (product.ShopOwnerId == ownerId || product.SupplierId == ownerId))
                                 .OrderBy(product => product.Name);
 
             var totalCount = await query.CountAsync();

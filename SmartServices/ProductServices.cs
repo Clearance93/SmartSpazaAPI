@@ -35,14 +35,14 @@ namespace SmartServices
             };
         }
 
-        public async Task<ProductDto> GetProductByBarcodeAsync(string barcode)
+        public async Task<ProductDto> GetProductByBarcodeAsync(string barcode, Guid ownerId)
         {
             if (string.IsNullOrWhiteSpace(barcode))
             {
                 throw new ValidationException("A barcode is required to look up a product.");
             }
 
-            var product = await _UnitOfWork.Product.GetByBarcodeAsync(barcode.Trim());
+            var product = await _UnitOfWork.Product.GetByBarcodeAsync(barcode.Trim(), ownerId);
 
             if (product == null)
             {
@@ -72,11 +72,12 @@ namespace SmartServices
             }
 
             var barcode = dto.Barcode.Trim();
-            var existing = await _UnitOfWork.Product.GetByBarcodeAsync(barcode);
+            var ownerId = dto.ShopOwnerId ?? dto.SupplierId ?? Guid.Empty;
+            var existing = await _UnitOfWork.Product.GetByBarcodeAsync(barcode, ownerId);
 
             if (existing != null)
             {
-                throw new ConflictException($"A product with the barcode: {barcode} already exists");
+                throw new ConflictException($"A product with the barcode: {barcode} already exists in your catalogue");
             }
 
             var product = _Mapper.Map<Product>(dto);
@@ -116,11 +117,12 @@ namespace SmartServices
             }
 
             var barcode = dto.Barcode.Trim();
-            var duplicate = await _UnitOfWork.Product.GetByBarcodeAsync(barcode);
+            var ownerId = product.ShopOwnerId ?? product.SupplierId ?? Guid.Empty;
+            var duplicate = await _UnitOfWork.Product.GetByBarcodeAsync(barcode, ownerId);
 
             if (duplicate != null && duplicate.ProductId != productId)
             {
-                throw new ConflictException($"A product with the barcode: {barcode} already exists");
+                throw new ConflictException($"A product with the barcode: {barcode} already exists in your catalogue");
             }
 
             product.Barcode = barcode;
@@ -185,7 +187,7 @@ namespace SmartServices
                     throw new ValidationException("Every checkout item must have a quantity greater than zero.");
                 }
 
-                var product = await ResolveProductAsync(item);
+                var product = await ResolveProductAsync(item, dto.ShopOwnerId ?? Guid.Empty);
 
                 if (product.StockQuantity < item.Quantity)
                 {
@@ -213,7 +215,7 @@ namespace SmartServices
             return _Mapper.Map<IEnumerable<ProductDto>>(updatedProducts);
         }
 
-        private async Task<Product> ResolveProductAsync(CheckoutItemDto item)
+        private async Task<Product> ResolveProductAsync(CheckoutItemDto item, Guid ownerId)
         {
             Product? product = null;
 
@@ -224,10 +226,13 @@ namespace SmartServices
 
             if ((product == null || product.IsDeleted) && !string.IsNullOrWhiteSpace(item.Barcode))
             {
-                product = await _UnitOfWork.Product.GetByBarcodeAsync(item.Barcode.Trim());
+                product = await _UnitOfWork.Product.GetByBarcodeAsync(item.Barcode.Trim(), ownerId);
             }
 
-            if (product == null || product.IsDeleted)
+            var ownsProduct = product != null &&
+                              (product.ShopOwnerId == ownerId || product.SupplierId == ownerId);
+
+            if (product == null || product.IsDeleted || !ownsProduct)
             {
                 var reference = item.ProductId != Guid.Empty ? item.ProductId.ToString() : item.Barcode;
 

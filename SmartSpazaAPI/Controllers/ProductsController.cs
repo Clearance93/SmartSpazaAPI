@@ -22,9 +22,12 @@ namespace SmartSpazaAPI.Controllers
         }
 
         [HttpGet("all-products")]
-        public async Task<IActionResult> GetAllProducts([FromQuery] PaginationParams pagination, Guid id)
+        public async Task<IActionResult> GetAllProducts([FromQuery] PaginationParams pagination)
         {
-            var products = await _ProductServices.GetPagedProductsAsync(pagination, id);
+            // Always scope to the signed-in business; never trust a client-supplied id.
+            var ownerId = User.RequireRoleUserId();
+
+            var products = await _ProductServices.GetPagedProductsAsync(pagination, ownerId);
 
             return Ok(products);
         }
@@ -32,7 +35,9 @@ namespace SmartSpazaAPI.Controllers
         [HttpGet("barcode")]
         public async Task<IActionResult> GetProductByBarcode(string code)
         {
-            var product = await _ProductServices.GetProductByBarcodeAsync(code);
+            var ownerId = User.RequireRoleUserId();
+
+            var product = await _ProductServices.GetProductByBarcodeAsync(code, ownerId);
 
             return Ok(product);
         }

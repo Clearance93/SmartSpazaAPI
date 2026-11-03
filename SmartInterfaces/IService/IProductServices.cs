@@ -7,7 +7,7 @@ namespace SmartInterfaces.IService
     {
         Task<PagedResult<ProductDto>> GetPagedProductsAsync(PaginationParams pagination, Guid id);
 
-        Task<ProductDto> GetProductByBarcodeAsync(string barcode);
+        Task<ProductDto> GetProductByBarcodeAsync(string barcode, Guid ownerId);
 
         Task<ProductDto> GetProductByIdAsync(Guid productId);
 
