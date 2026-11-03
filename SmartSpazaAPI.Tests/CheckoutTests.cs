@@ -17,12 +17,15 @@ namespace SmartSpazaAPI.Tests
         [Fact]
         public async Task Checkout_WhenStockIsInsufficient_ThrowsBusinessRuleException()
         {
+            var shopId = Guid.NewGuid();
+
             var product = new Product
             {
                 ProductId = Guid.NewGuid(),
                 Name = "Bread",
                 StockQuantity = 1,
-                IsDeleted = false
+                IsDeleted = false,
+                ShopOwnerId = shopId
             };
 
             var productRepository = new Mock<IProductRepository>();
@@ -40,6 +43,7 @@ namespace SmartSpazaAPI.Tests
 
             var exception = await Assert.ThrowsAsync<BusinessRuleException>(() => service.CheckoutAsync(new CheckoutDto
             {
+                ShopOwnerId = shopId,
                 Items = new List<CheckoutItemDto>
                 {
                     new() { ProductId = product.ProductId, Quantity = 2 }
