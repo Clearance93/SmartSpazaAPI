@@ -14,9 +14,8 @@ namespace SmartModels
 
         public Guid ShopId { get; set; }
 
-        public string DeliveryNumber { get; set; } = Guid.NewGuid().ToString("N")
-                                                                   .Substring(0, 5)
-                                                                   .ToUpper();
+        public string DeliveryNumber { get; set; } = NewDeliveryNumber();
+
         public DeliveryStatus DeliveryStatus { get; set; }
 
         public string? Priority { get; set; }
@@ -32,5 +31,10 @@ namespace SmartModels
         public DateTime? CreationTime { get; set; }
 
         public DateTime? Updated { get; set; }
+
+        public static string NewDeliveryNumber()
+        {
+            return Guid.NewGuid().ToString("N")[..5].ToUpperInvariant();
+        }
     }
 }

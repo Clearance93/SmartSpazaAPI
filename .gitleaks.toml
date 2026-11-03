@@ -1,0 +1,20 @@
+title = "SmartSpazaAPI gitleaks configuration"
+
+[extend]
+useDefault = true
+
+# The key below was committed before secrets were moved out of appsettings.json.
+# It must be treated as compromised: rotate it anywhere it was used. This allowlist
+# keeps the historical commit from breaking the secret-scan job while the key is
+# still present in git history.
+[allowlist]
+description = "Revoked historical key, the clearly-labelled local development placeholder, the documented demo password, and local IDE metadata."
+regexes = [
+    '''mP4zM0X8[A-Za-z0-9]+hfis8g3''',
+    '''LOCAL-DEV-ONLY-KEY-REPLACE-VIA-USER-SECRETS-0123456789abcdef''',
+    '''Spaza_123'''
+]
+paths = [
+    '''(^|/)\.vs/''',
+    '''(^|/)\.commandcode/'''
+]

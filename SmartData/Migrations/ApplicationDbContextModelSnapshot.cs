@@ -194,13 +194,7 @@ namespace SmartData.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
-                    b.Property<string>("Password")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<string>("PasswordHash")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("PasswordResetToken")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("PhoneNumber")
@@ -214,9 +208,6 @@ namespace SmartData.Migrations
 
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("TokenExpiration")
-                        .HasColumnType("datetime2");
 
                     b.Property<bool>("TwoFactorEnabled")
                         .HasColumnType("bit");
@@ -281,6 +272,8 @@ namespace SmartData.Migrations
                         .HasColumnType("bit");
 
                     b.HasKey("AvailabilityId");
+
+                    b.HasIndex("Uid");
 
                     b.ToTable("Availability");
                 });
@@ -464,6 +457,9 @@ namespace SmartData.Migrations
                     b.Property<Guid>("DeliveryId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
                     b.Property<string>("ProductName")
                         .HasColumnType("nvarchar(max)");
 
@@ -484,43 +480,22 @@ namespace SmartData.Migrations
 
                     b.HasKey("DeliveryItemId");
 
+                    b.HasIndex("DeliveryId");
+
                     b.ToTable("DeliveryItems");
                 });
 
-            modelBuilder.Entity("SmartModels.DeliveryPreference", b =>
+            modelBuilder.Entity("SmartModels.DeliveryRatings", b =>
                 {
-                    b.Property<Guid>("DeliveryPreferenceId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid>("BusinessProfileId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("CreationTime")
-                        .HasColumnType("datetime2");
-
-                    b.Property<TimeOnly>("PreferedDeliveryTime")
-                        .HasColumnType("time");
-
-                    b.Property<string>("SpecialInstruction")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("Updated")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("DeliveryPreferenceId");
-
-                    b.ToTable("DeliveryPreference");
-                });
-
-            modelBuilder.Entity("SmartModels.DeliveryRecord", b =>
-                {
-                    b.Property<Guid>("DeliveryRecordId")
+                    b.Property<Guid>("DeliveryRatingId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Comments")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("Created")
+                        .HasColumnType("datetime2");
 
                     b.Property<Guid>("DeliveryId")
                         .HasColumnType("uniqueidentifier");
@@ -528,15 +503,20 @@ namespace SmartData.Migrations
                     b.Property<Guid>("DriverId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("Ratings")
-                        .HasColumnType("nvarchar(max)");
+                    b.Property<decimal?>("Ratings")
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<Guid>("ShopId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.HasKey("DeliveryRecordId");
+                    b.Property<DateTime?>("Updated")
+                        .HasColumnType("datetime2");
 
-                    b.ToTable("DeliveryRecord");
+                    b.HasKey("DeliveryRatingId");
+
+                    b.HasIndex("DriverId");
+
+                    b.ToTable("DeliveryRatings");
                 });
 
             modelBuilder.Entity("SmartModels.DeliveryTracking", b =>
@@ -548,28 +528,33 @@ namespace SmartData.Migrations
                     b.Property<DateTime?>("CreationTime")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid?>("DeliveryId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<int>("DeliveryStatus")
                         .HasColumnType("int");
 
-                    b.Property<string>("DistanceRemaining")
-                        .HasColumnType("nvarchar(max)");
+                    b.Property<decimal?>("DistanceRemaining")
+                        .HasColumnType("decimal(18,2)");
 
                     b.Property<Guid>("DriverId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTime>("EstimatedTime")
-                        .HasColumnType("datetime2");
+                    b.Property<TimeOnly>("EstimatedTime")
+                        .HasColumnType("time");
 
-                    b.Property<string>("Latitude")
-                        .HasColumnType("nvarchar(max)");
+                    b.Property<double?>("Latitude")
+                        .HasColumnType("float");
 
-                    b.Property<string>("Longitude")
-                        .HasColumnType("nvarchar(max)");
+                    b.Property<double?>("Longitude")
+                        .HasColumnType("float");
 
                     b.Property<DateTime?>("Updated")
                         .HasColumnType("datetime2");
 
                     b.HasKey("DeliveryTrackingId");
+
+                    b.HasIndex("DriverId");
 
                     b.ToTable("DeliveryTracking");
                 });
@@ -697,6 +682,101 @@ namespace SmartData.Migrations
                     b.ToTable("OperatingHours");
                 });
 
+            modelBuilder.Entity("SmartModels.Product", b =>
+                {
+                    b.Property<Guid>("ProductId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Barcode")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Category")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("CreationTime")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<decimal>("Price")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<Guid?>("ShopOwnerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("StockKeepUnit")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("StockQuantity")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("SupplierId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Unit")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("Updated")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("ProductId");
+
+                    b.HasIndex("Barcode")
+                        .IsUnique()
+                        .HasFilter("[Barcode] IS NOT NULL AND [IsDeleted] = 0");
+
+                    b.ToTable("Products");
+                });
+
+            modelBuilder.Entity("SmartModels.RefreshToken", b =>
+                {
+                    b.Property<Guid>("RefreshTokenId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("Created")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedByIp")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("Expires")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ReplacedByTokenHash")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("Revoked")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RevokedByIp")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("RefreshTokenId");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("RefreshTokens");
+                });
+
             modelBuilder.Entity("SmartModels.ShopsOwner", b =>
                 {
                     b.Property<Guid>("ShopOwnerId")
@@ -756,7 +836,7 @@ namespace SmartData.Migrations
                     b.Property<string>("ContactNumber")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTime?>("CreatedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Email")
@@ -991,6 +1071,15 @@ namespace SmartData.Migrations
                         .IsRequired();
 
                     b.Navigation("BusinessProfile");
+                });
+
+            modelBuilder.Entity("SmartModels.RefreshToken", b =>
+                {
+                    b.HasOne("SmartModels.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("SmartModels.SupplierBusinessNotification", b =>

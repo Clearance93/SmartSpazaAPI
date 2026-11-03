@@ -8,15 +8,17 @@ namespace SmartDto.Delivery
 
         public Guid DriverId { get; set; }
 
+        public Guid? DeliveryId { get; set; }
+
         public DeliveryStatus DeliveryStatus { get; set; }
 
-        public string? Latitude { get; set; }
+        public double? Latitude { get; set; }
 
-        public string? Longitude { get; set; }
+        public double? Longitude { get; set; }
 
-        public string? DistanceRemaining { get; set; }
+        public decimal? DistanceRemaining { get; set; }
 
-        public DateTime EstimatedTime { get; set; }
+        public TimeOnly EstimatedTime { get; set; }
 
         public DateTime? CreationTime { get; set; }
 

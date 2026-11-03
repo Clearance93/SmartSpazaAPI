@@ -361,3 +361,16 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Local configuration / secrets
+appsettings.Production.json
+appsettings.Local.json
+*.env
+.env
+secrets.json
+
+# Local tool state
+.commandcode/
+
+# UI build output is deployed by the UI repo workflow
+SmartSpazaAPI/wwwroot/

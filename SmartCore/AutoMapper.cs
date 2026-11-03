@@ -3,6 +3,7 @@ using SmartDto;
 using SmartDto.Business;
 using SmartDto.Delivery;
 using SmartDto.Driver;
+using SmartDto.Inventory;
 using SmartModels;
 
 namespace SmartCore
@@ -14,9 +15,6 @@ namespace SmartCore
             CreateMap<ApplicationUser, UserDto>().ReverseMap(); 
 
             CreateMap<Availability, AvailabilityDto>()
-                .ForMember(dest => dest.Updated, opt => opt.Ignore())
-                .ForMember(dest => dest.CreationTime, opt => opt.Ignore())
-                .ForMember(dest => dest.AvailabilityId, opt => opt.Ignore())
                 .ReverseMap();
 
             CreateMap<BusinessNotificationPreference, BusinessNotificationPreferenceDto>()
@@ -36,9 +34,6 @@ namespace SmartCore
                 .ReverseMap();
 
             CreateMap<Delivery, DeliveryDto>()
-                .ForMember(dest => dest.Updated, opt => opt.Ignore())
-                .ForMember(dest => dest.CreationTime, opt => opt.Ignore())
-                .ForMember(dest => dest.DriverId, opt => opt.Ignore())
                 .ReverseMap();
 
             CreateMap<DeliveryConfiguration, DeliveryConfigurationDto>()
@@ -48,32 +43,17 @@ namespace SmartCore
                 .ReverseMap();
 
             CreateMap<DeliveryItems, DeliveryItemsDto>()
-                .ForMember(dest => dest.Updated, opt => opt.Ignore())
-                .ForMember(dest => dest.CreationTime, opt => opt.Ignore())
-                .ForMember(dest => dest.DeliveryItemId, opt => opt.Ignore())
                 .ReverseMap();
 
-            CreateMap<DeliveryPreference, DeliveryPreferenceDto>()
-                .ForMember(dest => dest.Updated, opt => opt.Ignore())
-                .ForMember(dest => dest.CreationTime, opt => opt.Ignore())
-                .ForMember(dest => dest.DeliveryPreferenceId, opt => opt.Ignore())
+            CreateMap<DeliveryRatings, DeliveryRatingsDto>()
                 .ReverseMap();
 
-            CreateMap<DeliveryPreference, DeliveryPreferenceDto>()
-                .ForMember(dest => dest.Updated, opt => opt.Ignore())
-                .ForMember(dest => dest.CreationTime, opt => opt.Ignore())
-                .ForMember(dest => dest.DeliveryPreferenceId, opt => opt.Ignore())
-                .ReverseMap();
+            CreateMap<DeliveryTracking, DeliveryTrackingDto>();
 
-            CreateMap<DeliveryRecord, DeliveryRecordDto>()
-                .ForMember(dest => dest.DeliveryRecordId, opt => opt.Ignore())
-                .ReverseMap();
-
-            CreateMap<DeliveryTracking, DeliveryTrackingDto>()
-                .ForMember(dest => dest.Updated, opt => opt.Ignore())
-                .ForMember(dest => dest.CreationTime, opt => opt.Ignore())
+            CreateMap<DeliveryTrackingDto, DeliveryTracking>()
                 .ForMember(dest => dest.DeliveryTrackingId, opt => opt.Ignore())
-                .ReverseMap();
+                .ForMember(dest => dest.CreationTime, opt => opt.Ignore())
+                .ForMember(dest => dest.Updated, opt => opt.Ignore());
 
             CreateMap<Drivers, DriversDto>()
                 .ForMember(dest => dest.Updated, opt => opt.Ignore())
@@ -88,9 +68,6 @@ namespace SmartCore
                 .ReverseMap();
 
             CreateMap<Navigation, NavigationDto>()
-                .ForMember(dest => dest.Updated, opt => opt.Ignore())
-                .ForMember(dest => dest.CreationTime, opt => opt.Ignore())
-                .ForMember(dest => dest.NavigationId, opt => opt.Ignore())
                 .ReverseMap();
 
             CreateMap<OperatingHours, OperatingHoursDto>()
@@ -122,16 +99,10 @@ namespace SmartCore
                 .ReverseMap();
 
             CreateMap<ShopsOwner, ShopOwnerDto>()
-				.ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
-				.ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
-				.ForMember(dest => dest.ShopOnwerId, opt => opt.Ignore())
-				.ReverseMap();
+                .ReverseMap();
 
             CreateMap<Supplier, SupplierDto>()
-				.ForMember(dest => dest.UpdatedAt, opt => opt.Ignore())
-				.ForMember(dest => dest.CreatedAt, opt => opt.Ignore())
-				.ForMember(dest => dest.SupplierId, opt => opt.Ignore())
-				.ReverseMap();
+                .ReverseMap();
 
             CreateMap<UserDto, Drivers>()
                 .ForMember(dest => dest.DriverId, opt => opt.Ignore())
@@ -146,6 +117,30 @@ namespace SmartCore
             CreateMap<UserDto, ShopsOwner>()
                 .ForMember(dest => dest.ShopOwnerId, opt => opt.Ignore())
                 .ForMember(dest => dest.PhoneNumber, opt => opt.MapFrom(src => src.WhatsAppNumber))
+                .ReverseMap();
+
+            CreateMap<RegisterDto, ApplicationUser>()
+                .ForMember(dest => dest.UserName, opt => opt.MapFrom(src => src.Email));
+
+            CreateMap<RegisterDto, Drivers>()
+                .ForMember(dest => dest.DriverId, opt => opt.Ignore())
+                .ForMember(dest => dest.PhoneNumbers, opt => opt.MapFrom(src => src.WhatsAppNumber));
+
+            CreateMap<RegisterDto, Supplier>()
+                .ForMember(dest => dest.SupplierId, opt => opt.Ignore())
+                .ForMember(dest => dest.SupplierName, opt => opt.MapFrom(src =>
+                    string.IsNullOrWhiteSpace(src.BusinessName) ? src.FullName : src.BusinessName))
+                .ForMember(dest => dest.ContactName, opt => opt.MapFrom(src => src.FullName))
+                .ForMember(dest => dest.ContactNumber, opt => opt.MapFrom(src => src.WhatsAppNumber));
+
+            CreateMap<RegisterDto, ShopsOwner>()
+                .ForMember(dest => dest.ShopOwnerId, opt => opt.Ignore())
+                .ForMember(dest => dest.OwnerName, opt => opt.MapFrom(src => src.FullName))
+                .ForMember(dest => dest.NameOfTheShops, opt => opt.MapFrom(src =>
+                    string.IsNullOrWhiteSpace(src.BusinessName) ? src.FullName : src.BusinessName))
+                .ForMember(dest => dest.PhoneNumber, opt => opt.MapFrom(src => src.WhatsAppNumber));
+
+            CreateMap<Product, ProductDto>()
                 .ReverseMap();
         }
     }

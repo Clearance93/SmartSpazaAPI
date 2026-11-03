@@ -1,8 +1,12 @@
-﻿using SmartData;
+﻿using System.Data;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using SmartData;
 using SmartInterfaces.IRepository;
 using SmartInterfaces.IRepository.IBusiness;
 using SmartInterfaces.IRepository.IDelivery;
 using SmartInterfaces.IRepository.IDriver;
+using SmartInterfaces.IRepository.IInventory;
 
 namespace SmartCore.UnitOfWork
 {
@@ -28,13 +32,11 @@ namespace SmartCore.UnitOfWork
 
         public ISystemNotificationRepository SystemNotification { get; private set; }
 
-        public IDeliveryConfigurationRepository EverythingConfiguration { get; private set; }
+        public IDeliveryConfigurationRepository DeliveryConfiguration { get; private set; }
 
         public IDeliveryItemsRepository DeliveryItems { get; private set; }
 
-        public IDeliveryPreferenceRepository DeliveryPreference { get; private set; }
-
-        public IDeliveryRecordRepository DeliveryRecord { get; private set; }
+        public IDeliveryRatingsRepository DeliveryRatings { get; private set; }
 
         public IDeliveryTrackingRepository DeliveryTracking { get; private set; }
 
@@ -50,6 +52,12 @@ namespace SmartCore.UnitOfWork
 
         public ISupplierRepository Supplier { get; private set; }
 
+        public IDeliveryRepository Delivery { get; private set; }
+
+        public IProductRepository Product { get; private set; }
+
+        public IRefreshTokenRepository RefreshToken { get; private set; }
+
         public UnitOfWork(ApplicationDbContext context,
                           IAvailabilityRepository availability,
                           IUserRepository userRepository,
@@ -62,15 +70,17 @@ namespace SmartCore.UnitOfWork
                           ISystemNotificationRepository systemNotificationRepository,
                           IDeliveryConfigurationRepository everythingConfigurationRepository,
                           IDeliveryItemsRepository deliveryItemsRepository,
-                          IDeliveryPreferenceRepository deliveryPreferenceRepository,
-                          IDeliveryRecordRepository deliveryRecordRepository,
+                          IDeliveryRatingsRepository deliveryRatingsRepository,
                           IDeliveryTrackingRepository deliveryTrackingRepository,
                           IDriverAvailabilityRepository availabilityRepository,
                           IDriverRepostory driverRepository,
                           INavigationRepository navigationRepository,
                           IVehicleRepository vehicleRepository,
                           IShopOwnerRepository shopOwnerRepository,
-                          ISupplierRepository supplierRepository)
+                          ISupplierRepository supplierRepository,
+                          IDeliveryRepository delivery,
+                          IProductRepository productRepository,
+                          IRefreshTokenRepository refreshTokenRepository)
         {
             _Context = context;
             Availability = availability ?? throw new ArgumentNullException(nameof(availability));
@@ -82,10 +92,9 @@ namespace SmartCore.UnitOfWork
             SupplierBusinessInfo = supplierBusinessInfoRepository ?? throw new ArgumentNullException(nameof(supplierBusinessInfoRepository));
             SupplierBusinessNotofocation = supplierBusinessNotofocationRepository ?? throw new ArgumentNullException(nameof(supplierBusinessNotofocationRepository));
             SystemNotification = systemNotificationRepository ?? throw new ArgumentNullException(nameof(systemNotificationRepository));
-            EverythingConfiguration = everythingConfigurationRepository ?? throw new ArgumentNullException(nameof(everythingConfigurationRepository));
+            DeliveryConfiguration = everythingConfigurationRepository ?? throw new ArgumentNullException(nameof(everythingConfigurationRepository));
             DeliveryItems = deliveryItemsRepository ?? throw new ArgumentNullException(nameof(deliveryItemsRepository));
-            DeliveryPreference = deliveryPreferenceRepository ?? throw new ArgumentNullException(nameof(deliveryPreferenceRepository));
-            DeliveryRecord = deliveryRecordRepository ?? throw new ArgumentNullException(nameof(deliveryRecordRepository));
+            DeliveryRatings = deliveryRatingsRepository ?? throw new ArgumentNullException(nameof(deliveryRatingsRepository));
             DeliveryTracking = deliveryTrackingRepository ?? throw new ArgumentNullException(nameof(deliveryTrackingRepository));
             AvailabilityRepository = availabilityRepository ?? throw new ArgumentNullException(nameof(availabilityRepository));
             Driver = driverRepository ?? throw new ArgumentNullException(nameof(driverRepository));
@@ -93,6 +102,9 @@ namespace SmartCore.UnitOfWork
             Vehicle = vehicleRepository ?? throw new ArgumentNullException(nameof(vehicleRepository));
             ShopOwner = shopOwnerRepository ?? throw new ArgumentNullException(nameof(shopOwnerRepository));
             Supplier = supplierRepository ?? throw new ArgumentNullException(nameof(supplierRepository));
+            Delivery = delivery ?? throw new ArgumentNullException(nameof(delivery));
+            Product = productRepository ?? throw new ArgumentNullException(nameof(productRepository));
+            RefreshToken = refreshTokenRepository ?? throw new ArgumentNullException(nameof(refreshTokenRepository));
         }
 
         public void Dispose()
@@ -100,9 +112,14 @@ namespace SmartCore.UnitOfWork
             _Context.Dispose();
         }
 
-        public async Task<int> SaveChangesAsyc()
+        public async Task<int> SaveChangesAsync()
         {
             return await _Context.SaveChangesAsync();
+        }
+
+        public Task<IDbContextTransaction> BeginTransactionAsync(IsolationLevel isolationLevel = IsolationLevel.ReadCommitted)
+        {
+            return _Context.Database.BeginTransactionAsync(isolationLevel);
         }
     }
 }

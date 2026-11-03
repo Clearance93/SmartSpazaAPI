@@ -1,0 +1,60 @@
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD}"
+    ports:
+      - "127.0.0.1:1433:1433"
+    volumes:
+      - mssql_data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/localhost/1433' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  mailpit:
+    image: axllent/mailpit:v1.33.0
+    ports:
+      - "127.0.0.1:8025:8025"
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__ConnectionString: "Server=sqlserver,1433;Database=SpartSpazaDB;User Id=sa;Password=${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD};Encrypt=True;TrustServerCertificate=True"
+      Jwt__Key: "${JWT_KEY:?Set JWT_KEY to a random string of at least 32 bytes}"
+      Jwt__Issuer: "SmartSpazaAPI"
+      Jwt__Audience: "SmartSpazaAPI"
+      # Local demo mail catcher: registration sends real SMTP messages to Mailpit.
+      Auth__RequireEmailConfirmation: "true"
+      # Local-only Compose stack: TLS is terminated nowhere, so HTTP is allowed and the port is
+      # bound to localhost. Production must set Https__RequireHttps=true and terminate TLS.
+      Https__RequireHttps: "false"
+      Swagger__Enabled: "true"
+      Smtp__Host: "mailpit"
+      Smtp__Port: "1025"
+      Smtp__EnableSsl: "false"
+      Smtp__AllowInsecure: "true"
+      Smtp__FromAddress: "no-reply@smartspaza.local"
+      Smtp__FromName: "SmartSpaza"
+      Cors__AllowedOrigins__0: "${CORS_ORIGIN:-http://localhost:3000}"
+      AppSettings__EmailConfirmationUrl: "http://localhost:8080/api/Auth/confirm-email"
+      AppSettings__PasswordResetUrl: "http://localhost:3000/reset-password"
+    ports:
+      - "127.0.0.1:8080:8080"
+    restart: unless-stopped
+
+volumes:
+  mssql_data:

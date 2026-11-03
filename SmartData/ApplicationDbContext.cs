@@ -26,9 +26,7 @@ namespace SmartData
 
         public DbSet<DeliveryItems> DeliveryItems { get; set; }
 
-        public DbSet<DeliveryPreference> DeliveryPreference { get; set; }
-
-        public DbSet<DeliveryRecord> DeliveryRecord { get; set; }
+        public DbSet<DeliveryRatings> DeliveryRatings { get; set; }
 
         public DbSet<DeliveryTracking> DeliveryTracking { get; set; }
 
@@ -51,5 +49,38 @@ namespace SmartData
         public DbSet<ShopsOwner> ShopsOwners { get; set; }
 
         public DbSet<Supplier> Suppliers { get; set; }
+
+        public DbSet<Product> Products { get; set; }
+
+        public DbSet<RefreshToken> RefreshTokens { get; set; }
+
+        protected override void OnModelCreating(ModelBuilder builder)
+        {
+            base.OnModelCreating(builder);
+
+            builder.Entity<DeliveryItems>().HasQueryFilter(item => !item.IsDeleted);
+            builder.Entity<Product>().HasQueryFilter(product => !product.IsDeleted);
+
+            builder.Entity<DeliveryItems>().HasIndex(item => item.DeliveryId);
+            builder.Entity<DeliveryTracking>().HasIndex(tracking => tracking.DriverId);
+            builder.Entity<DeliveryRatings>().HasIndex(rating => rating.DriverId);
+            builder.Entity<Navigation>().HasIndex(navigation => navigation.DriverId);
+            builder.Entity<Vehicle>().HasIndex(vehicle => vehicle.DriverId);
+            builder.Entity<Availability>().HasIndex(availability => availability.Uid);
+            builder.Entity<Product>().HasIndex(product => product.Barcode)
+                                      .IsUnique()
+                                      .HasFilter("[Barcode] IS NOT NULL AND [IsDeleted] = 0");
+
+            builder.Entity<RefreshToken>(entity =>
+            {
+                entity.Property(token => token.TokenHash).HasMaxLength(64).IsRequired();
+                entity.Property(token => token.UserId).HasMaxLength(450).IsRequired();
+                entity.HasIndex(token => token.TokenHash).IsUnique();
+                entity.HasOne<ApplicationUser>()
+                      .WithMany()
+                      .HasForeignKey(token => token.UserId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+        }
     }
 }

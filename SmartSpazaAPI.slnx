@@ -1,4 +1,5 @@
 <Solution>
+  <Project Path="SmartConfiguration/SmartConfiguration.csproj" Id="b79f30f1-1e8e-41c2-ab94-56886e5c024d" />
   <Project Path="SmartCore/SmartCore.csproj" />
   <Project Path="SmartData/SmartData.csproj" />
   <Project Path="SmartDto/SmartDto.csproj" />
@@ -8,6 +9,6 @@
   <Project Path="SmartRepository/SmartRepository.csproj" />
   <Project Path="SmartServices/SmartServices.csproj" />
   <Project Path="SmartSpazaAPI/SmartSpazaAPI.csproj" />
-  <Project Path="SmartStatistics/SmartStatistics.csproj" />
+  <Project Path="SmartSpazaAPI.Tests/SmartSpazaAPI.Tests.csproj" />
   <Project Path="SmartUtility/SmartUtility.csproj" />
 </Solution>

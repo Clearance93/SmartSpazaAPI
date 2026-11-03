@@ -7,5 +7,6 @@
         OnTheWay = 3,
         Delivered = 4,
         Rejected = 5,
+        Created = 6
     }
 }
