@@ -40,7 +40,7 @@ jobs:
           FTP_USER: ${{ secrets.FTP_USER }}
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
         run: |
-          lftp -c "set ftp:ssl-allow no; set ftp:passive-mode true; set mirror:parallel-transfer-count 4; open -u '${FTP_USER}','${FTP_PASSWORD}' ${FTP_HOST}; mirror -R --no-perms --no-symlinks --no-remove --exclude-glob appsettings.Production.json --exclude-glob wwwroot ./publish /wwwroot"
+          lftp -c "set ftp:ssl-allow no; set ftp:passive-mode true; set mirror:parallel-transfer-count 4; open -u '${FTP_USER}','${FTP_PASSWORD}' ${FTP_HOST}; mirror -R --no-perms --no-symlinks --exclude-glob appsettings.Production.json --exclude-glob wwwroot ./publish /wwwroot"
 
       - name: Bring the site back online
         if: always()

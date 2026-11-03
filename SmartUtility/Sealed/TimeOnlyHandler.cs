@@ -27,7 +27,7 @@ namespace SmartUtility.Sealed
 
         public override void SetValue(IDbDataParameter parameter, TimeOnly value)
         {
-            throw new NotImplementedException();
+            parameter.Value = value.ToTimeSpan();
         }
     }
 }

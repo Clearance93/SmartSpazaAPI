@@ -1,7 +1,10 @@
-﻿using SmartInterfaces.IRepository;
+﻿using System.Data;
+using Microsoft.EntityFrameworkCore.Storage;
+using SmartInterfaces.IRepository;
 using SmartInterfaces.IRepository.IBusiness;
 using SmartInterfaces.IRepository.IDelivery;
 using SmartInterfaces.IRepository.IDriver;
+using SmartInterfaces.IRepository.IInventory;
 
 namespace SmartCore.UnitOfWork
 {
@@ -19,19 +22,21 @@ namespace SmartCore.UnitOfWork
 
         IOperatingHoursRepository OperatingHours { get; }
 
+        IShopOwnerRepository ShopOwner { get; }
+
         ISupplierBusinessInfoRepository SupplierBusinessInfo { get; }
 
         ISupplierBusinessNotofocationRepository SupplierBusinessNotofocation { get; }
 
         ISystemNotificationRepository SystemNotification { get; }
 
-        IDeliveryConfigurationRepository EverythingConfiguration { get; }
+        IDeliveryConfigurationRepository DeliveryConfiguration { get; }
 
         IDeliveryItemsRepository DeliveryItems { get; }
 
-        IDeliveryPreferenceRepository DeliveryPreference { get; }
+        IDeliveryRepository Delivery { get; }
 
-        IDeliveryRecordRepository DeliveryRecord { get; }
+        IDeliveryRatingsRepository DeliveryRatings { get; }
 
         IDeliveryTrackingRepository DeliveryTracking { get; }
 
@@ -43,10 +48,14 @@ namespace SmartCore.UnitOfWork
 
         IVehicleRepository Vehicle { get; }
 
-        IShopOwnerRepository ShopOwner { get; }
-
         ISupplierRepository Supplier { get; }
 
-        Task<int> SaveChangesAsyc();
+        IProductRepository Product { get; }
+
+        IRefreshTokenRepository RefreshToken { get; }
+
+        Task<int> SaveChangesAsync();
+
+        Task<IDbContextTransaction> BeginTransactionAsync(IsolationLevel isolationLevel = IsolationLevel.ReadCommitted);
     }
 }

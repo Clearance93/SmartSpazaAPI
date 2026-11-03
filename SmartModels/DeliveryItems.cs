@@ -18,6 +18,9 @@ namespace SmartModels
         public string? Unit {  get; set; }
 
         public string? Weight { get; set; }
+
+        public bool IsDeleted { get; set; }
+
         public DateTime? CreationTime { get; set; }
 
         public DateTime? Updated { get; set; }

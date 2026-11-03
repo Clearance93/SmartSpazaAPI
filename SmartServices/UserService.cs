@@ -1,14 +1,18 @@
-﻿using AutoMapper;
+using AutoMapper;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
+using SmartConfiguration;
 using SmartCore.UnitOfWork;
 using SmartDto;
+using SmartDto.Business;
+using SmartDto.Driver;
+using SmartEnums;
 using SmartInterfaces.IService;
 using SmartModels;
 using System.IdentityModel.Tokens.Jwt;
-using System.Security.Authentication;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -22,128 +26,541 @@ namespace SmartServices
         private readonly IConfiguration _Configuration;
         private readonly UserManager<ApplicationUser> _UserManager;
         private readonly RoleManager<IdentityRole> _RoleManager;
+        private readonly IConfirmationEmailSender _ConfirmationEmailSender;
+        private readonly ILogger<UserService> _Logger;
 
         public UserService(IUnitOfWork unitOfWork,
                            IMapper mapper,
                            IConfiguration configuration,
                            UserManager<ApplicationUser> userManager,
-                           RoleManager<IdentityRole> roleManager)
+                           RoleManager<IdentityRole> roleManager,
+                           IConfirmationEmailSender confirmationEmailSender,
+                           ILogger<UserService> logger)
         {
             _UnitOfWork = unitOfWork ?? throw new ArgumentNullException(nameof(unitOfWork));
             _Mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
             _Configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
             _UserManager = userManager ?? throw new ArgumentNullException(nameof(userManager));
             _RoleManager = roleManager ?? throw new ArgumentNullException(nameof(roleManager));
+            _ConfirmationEmailSender = confirmationEmailSender ?? throw new ArgumentNullException(nameof(confirmationEmailSender));
+            _Logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
-        public async Task<ResponseUserDto> AuthenticateUserAsync(UserLoginDto dto)
+        public async Task<ResponseUserDto> AuthenticateUserAsync(UserLoginDto dto, string? ipAddress = null)
         {
-            var userExists = await _UnitOfWork.User.GetUserByEmailAsync(dto.Email!);
+            var user = await _UserManager.FindByEmailAsync(dto.Email!);
 
-            if (userExists == null)
+            if (user == null)
             {
-                throw new AuthenticationException("Invalid email or password.");
+                throw new UnauthorizedException("Invalid email or password.");
             }
 
-            if (!userExists.EmailConfirmed)
+            if (await _UserManager.IsLockedOutAsync(user))
             {
-                throw new AuthenticationException("Email not confirmed. Please confirm your email before logging in.");
+                _Logger.LogWarning("Login attempt for locked account {Email}.", dto.Email);
+
+                throw new UnauthorizedException("Invalid email or password.");
             }
 
-            var passwordHasher = new PasswordHasher<ApplicationUser>();
+            var passwordValid = await _UserManager.CheckPasswordAsync(user, dto.Password!);
 
-            var results = passwordHasher.VerifyHashedPassword(userExists, userExists.Password!, dto.Password!);
-
-            if (results == PasswordVerificationResult.Failed)
+            if (!passwordValid)
             {
-                userExists.AccessFailedCount++;
+                await _UserManager.AccessFailedAsync(user);
 
-                if (userExists.AccessFailedCount >= 5)
+                _Logger.LogWarning("Failed login attempt for {Email}.", dto.Email);
+
+                throw new UnauthorizedException("Invalid email or password.");
+            }
+
+            if (!user.EmailConfirmed)
+            {
+                throw new UnauthorizedException("Email not confirmed. Please confirm your email before logging in.");
+            }
+
+            await _UserManager.ResetAccessFailedCountAsync(user);
+
+            _Logger.LogInformation("User {Email} authenticated successfully.", user.Email);
+
+            return await IssueTokensAsync(user, ipAddress);
+        }
+
+        public async Task<ResponseUserDto> RefreshTokenAsync(string refreshToken, string? ipAddress)
+        {
+            if (string.IsNullOrWhiteSpace(refreshToken))
+            {
+                throw new ValidationException("A refresh token is required.");
+            }
+
+            var tokenHash = HashToken(refreshToken);
+            var existing = await _UnitOfWork.RefreshToken.GetByTokenHashAsync(tokenHash);
+
+            if (existing == null)
+            {
+                throw new UnauthorizedException("Invalid refresh token.");
+            }
+
+            if (!existing.IsActive)
+            {
+                _Logger.LogWarning("Refresh token reuse detected for user {UserId}; revoking all active tokens.", existing.UserId);
+
+                await RevokeAllActiveTokensAsync(existing.UserId, ipAddress);
+
+                throw new UnauthorizedException("Invalid refresh token.");
+            }
+
+            var user = await _UserManager.FindByIdAsync(existing.UserId);
+
+            if (user == null || !user.EmailConfirmed)
+            {
+                await RevokeAllActiveTokensAsync(existing.UserId, ipAddress);
+
+                throw new UnauthorizedException("Invalid refresh token.");
+            }
+
+            var newRefreshTokenValue = GenerateRefreshTokenValue();
+            var newRefreshTokenHash = HashToken(newRefreshTokenValue);
+
+            // Claim the old token atomically. A concurrent refresh with the same token will
+            // fail here and trigger full token revocation instead of issuing a second session.
+            var revoked = await _UnitOfWork.RefreshToken.TryRevokeAsync(existing.RefreshTokenId,
+                                                                        DateTime.UtcNow,
+                                                                        ipAddress,
+                                                                        newRefreshTokenHash);
+
+            if (!revoked)
+            {
+                _Logger.LogWarning("Concurrent refresh detected for user {UserId}; revoking all active tokens.", existing.UserId);
+
+                await RevokeAllActiveTokensAsync(existing.UserId, ipAddress);
+
+                throw new UnauthorizedException("Invalid refresh token.");
+            }
+
+            return await IssueTokensAsync(user,
+                                          ipAddress,
+                                          newRefreshTokenValue,
+                                          newRefreshTokenHash);
+        }
+
+        public async Task<bool> RevokeRefreshTokenAsync(string refreshToken, string? ipAddress)
+        {
+            if (string.IsNullOrWhiteSpace(refreshToken))
+            {
+                return true;
+            }
+
+            var existing = await _UnitOfWork.RefreshToken.GetByTokenHashAsync(HashToken(refreshToken));
+
+            if (existing == null || !existing.IsActive)
+            {
+                return true;
+            }
+
+            await _UnitOfWork.RefreshToken.TryRevokeAsync(existing.RefreshTokenId,
+                                                          DateTime.UtcNow,
+                                                          ipAddress,
+                                                          null);
+
+            return true;
+        }
+
+        public async Task<ResponseUserDto> CreateUserAsync(RegisterDto dto)
+        {
+            if (string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Password))
+            {
+                throw new ValidationException("Email and password are required.");
+            }
+
+            if (string.IsNullOrWhiteSpace(dto.Role) || !RoleNames.All.Contains(dto.Role))
+            {
+                throw new ValidationException("Specified role is not supported for registration.");
+            }
+
+            var existingUser = await _UserManager.FindByEmailAsync(dto.Email);
+
+            if (existingUser != null)
+            {
+                throw new ConflictException("A user with this email already exists.");
+            }
+
+            var user = _Mapper.Map<ApplicationUser>(dto);
+
+            user.Id = Guid.NewGuid().ToString();
+            user.UserName = dto.Email;
+            user.Email = dto.Email;
+            user.PhoneNumber = dto.WhatsAppNumber;
+            user.CreationTime = DateTime.UtcNow;
+
+            var result = await _UserManager.CreateAsync(user, dto.Password!);
+
+            if (!result.Succeeded)
+            {
+                var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+
+                throw new ValidationException($"Failed to create user: {errors}");
+            }
+
+            if (!await _RoleManager.RoleExistsAsync(dto.Role))
+            {
+                await _RoleManager.CreateAsync(new IdentityRole(dto.Role));
+            }
+
+            var addToRole = await _UserManager.AddToRoleAsync(user, dto.Role);
+
+            if (!addToRole.Succeeded)
+            {
+                await _UserManager.DeleteAsync(user);
+
+                var errors = string.Join(", ", addToRole.Errors.Select(e => e.Description));
+
+                throw new ValidationException($"Failed to assign role to user: {errors}");
+            }
+
+            try
+            {
+                await CreateRoleProfileAsync(user, dto);
+            }
+            catch
+            {
+                await _UserManager.DeleteAsync(user);
+
+                throw;
+            }
+
+            var requireEmailConfirmation = _Configuration.GetValue("Auth:RequireEmailConfirmation", true);
+            var confirmationEmailSent = false;
+
+            if (requireEmailConfirmation)
+            {
+                var confirmationToken = await _UserManager.GenerateEmailConfirmationTokenAsync(user);
+                var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(confirmationToken));
+
+                try
                 {
-                    userExists.LockoutEnd = DateTimeOffset.Now.AddMinutes(5);
-
-                    userExists.LockoutEnabled = true;
-
-                    throw new AuthenticationException("Your account is blocked due to multiple failed login attempts. Please try again after 15 minutes. 😔");
+                    await _ConfirmationEmailSender.SendConfirmationAsync(user.Email!, user.Id, encodedToken);
+                    confirmationEmailSent = true;
                 }
-
-                _UnitOfWork.User.Update(userExists);
-
-                await _UnitOfWork.SaveChangesAsyc();
+                catch (Exception exception)
+                {
+                    // The account exists and can be confirmed later via resend-confirmation.
+                    // Do not turn a transient mail failure into a half-created account error.
+                    _Logger.LogError(exception,
+                                     "The confirmation email for {Email} could not be sent.",
+                                     user.Email);
+                }
             }
             else
             {
-                userExists.AccessFailedCount = 0;
+                // Email confirmation is switched off (e.g. no SMTP in local development),
+                // so the account is usable straight away.
+                user.EmailConfirmed = true;
 
-                _UnitOfWork.User.Update(userExists);
+                var updateResult = await _UserManager.UpdateAsync(user);
 
-                await _UnitOfWork.SaveChangesAsyc();   
-                
-                return await GenerateTokenAsycAsync(_Mapper.Map<UserDto>(userExists));
+                if (!updateResult.Succeeded)
+                {
+                    var errors = string.Join(", ", updateResult.Errors.Select(e => e.Description));
+
+                    throw new ValidationException($"Failed to confirm new user: {errors}");
+                }
+
+                _Logger.LogWarning("Auth:RequireEmailConfirmation is disabled. {Email} was registered as already confirmed.", user.Email);
             }
 
-            throw new AuthenticationException("Invalid email or password.");
+            return new ResponseUserDto
+            {
+                Email = user.Email,
+                Roles = new List<string> { dto.Role },
+                EmailConfirmed = user.EmailConfirmed,
+                ConfirmationEmailSent = confirmationEmailSent || !requireEmailConfirmation
+            };
         }
 
-        private async Task<ResponseUserDto> GenerateTokenAsycAsync(UserDto userDto)
+        private async Task CreateRoleProfileAsync(ApplicationUser user, RegisterDto dto)
         {
-            var jwtKey = _Configuration["Jwt:Key"] ?? throw new InvalidOperationException("JWT key is not configured.");
-            var jwtIssuer = _Configuration["Jwt:Issuer"] ?? throw new InvalidOperationException("JWT issuer is not configured.");
-            var jwtAudience = _Configuration["Jwt:Audience"] ?? throw new InvalidOperationException("JWT audience is not configured.");
-
-            var roles = userDto.Roles ?? new List<string>();
-
-            if (!roles.Any() &&
-                !string.IsNullOrWhiteSpace(userDto.Email))
+            switch (dto.Role)
             {
-                var appUser = await _UnitOfWork.User.GetUserByEmailAsync(userDto.Email);
+                case RoleNames.Supplier:
+                    var supplier = _Mapper.Map<Supplier>(dto);
+                    supplier.SupplierId = Guid.Parse(user.Id);
+                    supplier.CreatedAt = user.CreationTime;
+                    await _UnitOfWork.Supplier.AddAsync(supplier);
+                    break;
 
-                if (appUser != null)
-                {
-                    var fetchRoles = await _UserManager.GetRolesAsync(appUser);
-                    roles = fetchRoles.ToList();
-                }
+                case RoleNames.SpazaOwner:
+                    var shopOwner = _Mapper.Map<ShopsOwner>(dto);
+                    shopOwner.ShopOwnerId = Guid.Parse(user.Id);
+                    shopOwner.ShopType = ShopType.General;
+                    shopOwner.CreatedAt = user.CreationTime;
+                    await _UnitOfWork.ShopOwner.AddAsync(shopOwner);
+                    break;
+
+                case RoleNames.Driver:
+                    var driver = _Mapper.Map<Drivers>(dto);
+                    driver.DriverId = Guid.Parse(user.Id);
+                    driver.CreationTime = user.CreationTime;
+                    await _UnitOfWork.Driver.AddAsync(driver);
+
+                    await _UnitOfWork.Availability.AddAsync(_Mapper.Map<Availability>(new AvailabilityDto
+                    {
+                        AvailabilityId = Guid.NewGuid(),
+                        Uid = driver.DriverId,
+                        CreationTime = DateTime.UtcNow
+                    }));
+
+                    await _UnitOfWork.Navigation.AddAsync(_Mapper.Map<Navigation>(new NavigationDto
+                    {
+                        NavigationId = Guid.NewGuid(),
+                        DriverId = driver.DriverId,
+                        CreationTime = DateTime.UtcNow
+                    }));
+
+                    await _UnitOfWork.SystemNotification.AddAsync(_Mapper.Map<SystemNotification>(new SystemNotifiationDto
+                    {
+                        SystemNotificationId = Guid.NewGuid(),
+                        Uid = driver.DriverId,
+                        NewAssignments = true,
+                        CustomerMessages = true,
+                        SystemUpdate = true,
+                        CreationTime = DateTime.UtcNow
+                    }));
+                    break;
             }
 
-            Guid? roleUserId = null;
+            await _UnitOfWork.SaveChangesAsync();
+        }
 
-            if (!string.IsNullOrWhiteSpace(userDto.Email))
+        public async Task<bool> EmailConfirmationAsync(string userId, string token)
+        {
+            if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(token))
             {
-                if (roles.Contains("Supplier"))
-                {
-                    var supplier = await _UnitOfWork.Supplier.GetSupplierByEmail(userDto.Email);
-                    if (supplier != null)
-                    {
-                        roleUserId = supplier.SupplierId;
-                    }
-
-                }
-                else if (roles.Contains("SpazaOwner"))
-                {
-                    var shopOwner = await _UnitOfWork.ShopOwner.GetShopOwnerByEmail(userDto.Email);
-                    if (shopOwner != null)
-                    {
-                        roleUserId = shopOwner.ShopOwnerId;
-                    }
-                }
-                else
-                {
-                    var driver = await _UnitOfWork.Driver.GetDriverByEmail(userDto.Email);
-                    if (driver != null)
-                    {
-                        roleUserId = driver.DriverId;
-                    }
-                }
+                throw new ValidationException("User ID and token are required.");
             }
+
+            var user = await _UserManager.FindByIdAsync(userId);
+
+            if (user == null)
+            {
+                throw new ValidationException("Invalid confirmation link.");
+            }
+
+            if (user.EmailConfirmed)
+            {
+                return true;
+            }
+
+            var decodedToken = DecodeToken(token);
+
+            var result = await _UserManager.ConfirmEmailAsync(user, decodedToken);
+
+            if (!result.Succeeded)
+            {
+                throw new ValidationException("This confirmation link is invalid or has expired. Please request a new confirmation email.");
+            }
+
+            return true;
+        }
+
+        public async Task<bool> ResendConfirmationEmailAsync(string email)
+        {
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                throw new ValidationException("Email is required.");
+            }
+
+            if (!_Configuration.GetValue("Auth:RequireEmailConfirmation", true))
+            {
+                return true;
+            }
+
+            var user = await _UserManager.FindByEmailAsync(email);
+
+            if (user == null || user.EmailConfirmed)
+            {
+                return true;
+            }
+
+            var token = await _UserManager.GenerateEmailConfirmationTokenAsync(user);
+            var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
+
+            try
+            {
+                await _ConfirmationEmailSender.SendConfirmationAsync(user.Email!, user.Id, encodedToken);
+            }
+            catch (Exception exception)
+            {
+                // Keep the response identical whether or not the account exists or mail is down.
+                _Logger.LogError(exception, "The confirmation email for {Email} could not be sent.", user.Email);
+            }
+
+            return true;
+        }
+
+        public async Task<bool> ForgotPasswordAsync(string email)
+        {
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                throw new ValidationException("Email is required.");
+            }
+
+            var user = await _UserManager.FindByEmailAsync(email);
+
+            if (user == null)
+            {
+                return true;
+            }
+
+            var token = await _UserManager.GeneratePasswordResetTokenAsync(user);
+            var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
+
+            try
+            {
+                await _ConfirmationEmailSender.SendPasswordResetAsync(user.Email!, encodedToken);
+            }
+            catch (Exception exception)
+            {
+                _Logger.LogError(exception, "The password reset email for {Email} could not be sent.", user.Email);
+            }
+
+            return true;
+        }
+
+        public async Task<bool> ResetPasswordAsync(ResetPasswordDto dto)
+        {
+            if (string.IsNullOrWhiteSpace(dto.Email) ||
+                string.IsNullOrWhiteSpace(dto.Token) ||
+                string.IsNullOrWhiteSpace(dto.NewPassword))
+            {
+                throw new ValidationException("Email, token and new password are required.");
+            }
+
+            var user = await _UserManager.FindByEmailAsync(dto.Email);
+
+            if (user == null)
+            {
+                throw new ValidationException("This password reset request is invalid or has expired.");
+            }
+
+            var decodedToken = DecodeToken(dto.Token);
+            var result = await _UserManager.ResetPasswordAsync(user, decodedToken, dto.NewPassword);
+
+            if (!result.Succeeded)
+            {
+                var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+
+                throw new ValidationException($"Failed to reset password: {errors}");
+            }
+
+            await RevokeAllActiveTokensAsync(user.Id, null);
+
+            _Logger.LogInformation("Password reset completed for user {UserId}.", user.Id);
+
+            return true;
+        }
+
+        public async Task<bool> ChangePasswordAsync(string userId, PasswordChangeDto dto)
+        {
+            if (string.IsNullOrWhiteSpace(dto.OldPassword) ||
+                string.IsNullOrWhiteSpace(dto.NewPassword))
+            {
+                throw new ValidationException("Current password and new password are required.");
+            }
+
+            var user = await _UserManager.FindByIdAsync(userId);
+
+            if (user == null)
+            {
+                throw new NotFoundException("User not found.");
+            }
+
+            var result = await _UserManager.ChangePasswordAsync(user, dto.OldPassword, dto.NewPassword);
+
+            if (!result.Succeeded)
+            {
+                var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+
+                throw new ValidationException($"Failed to change password: {errors}");
+            }
+
+            await RevokeAllActiveTokensAsync(user.Id, null);
+
+            _Logger.LogInformation("Password changed for user {UserId}.", user.Id);
+
+            return true;
+        }
+
+        private async Task<ResponseUserDto> IssueTokensAsync(ApplicationUser user,
+                                                             string? ipAddress,
+                                                             string? refreshTokenValue = null,
+                                                             string? refreshTokenHash = null)
+        {
+            var roles = (await _UserManager.GetRolesAsync(user)).ToList();
+
+            Guid? roleUserId = roles.Any(role => RoleNames.All.Contains(role))
+                ? Guid.Parse(user.Id)
+                : null;
+
+            var (accessToken, expiration) = BuildAccessToken(user, roles, roleUserId);
+
+            var refreshTokenDays = _Configuration.GetValue("Jwt:RefreshTokenDays", 7);
+            var tokenValue = refreshTokenValue ?? GenerateRefreshTokenValue();
+            var tokenHash = refreshTokenHash ?? HashToken(tokenValue);
+
+            var refreshToken = new RefreshToken
+            {
+                RefreshTokenId = Guid.NewGuid(),
+                UserId = user.Id,
+                TokenHash = tokenHash,
+                Created = DateTime.UtcNow,
+                Expires = DateTime.UtcNow.AddDays(refreshTokenDays),
+                CreatedByIp = ipAddress
+            };
+
+            await _UnitOfWork.RefreshToken.AddAsync(refreshToken);
+            await _UnitOfWork.SaveChangesAsync();
+
+            return new ResponseUserDto
+            {
+                Token = accessToken,
+                Expiration = expiration,
+                RefreshToken = tokenValue,
+                RefreshTokenExpiration = refreshToken.Expires,
+                Email = user.Email,
+                Roles = roles,
+                RoleUserId = roleUserId,
+                EmailConfirmed = user.EmailConfirmed,
+                ConfirmationEmailSent = true
+            };
+        }
+
+        private (string Token, DateTime Expiration) BuildAccessToken(ApplicationUser user,
+                                                                     List<string> roles,
+                                                                     Guid? roleUserId)
+        {
+            var jwtKey = _Configuration["Jwt:Key"]
+                ?? throw new InvalidOperationException("JWT key is not configured.");
+
+            if (Encoding.UTF8.GetByteCount(jwtKey) < 32)
+            {
+                throw new InvalidOperationException("The JWT key must be at least 32 bytes.");
+            }
+
+            var jwtIssuer = _Configuration["Jwt:Issuer"]
+                ?? throw new InvalidOperationException("JWT issuer is not configured.");
+
+            var jwtAudience = _Configuration["Jwt:Audience"]
+                ?? throw new InvalidOperationException("JWT audience is not configured.");
+
+            var accessTokenMinutes = _Configuration.GetValue("Jwt:AccessTokenMinutes", 15);
 
             var claims = new List<Claim>
             {
-                new Claim(JwtRegisteredClaimNames.Sub, userDto.Email!),
-                new Claim(JwtRegisteredClaimNames.Email, userDto.Email!),
+                new Claim(JwtRegisteredClaimNames.Sub, user.Id),
+                new Claim(JwtRegisteredClaimNames.Email, user.Email ?? string.Empty),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-
-                new Claim("extension_userId", userDto.Id!),
-                new Claim("extension_FullName", userDto.FullName ?? string.Empty)
+                new Claim("extension_userId", user.Id),
+                new Claim("extension_FullName", user.FullName ?? string.Empty)
             };
 
             foreach (var role in roles)
@@ -157,170 +574,57 @@ namespace SmartServices
             }
 
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
-            var cred = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+            var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
             var token = new JwtSecurityToken(
                 issuer: jwtIssuer,
                 audience: jwtAudience,
                 claims: claims,
-                expires: DateTime.UtcNow.AddHours(1),
-                signingCredentials: cred
-            );
+                expires: DateTime.UtcNow.AddMinutes(accessTokenMinutes),
+                signingCredentials: credentials);
 
-            return new ResponseUserDto
-            {
-                Expiration = token.ValidTo,
-                Email = userDto.Email,
-                Roles = roles,
-                Token = new JwtSecurityTokenHandler().WriteToken(token)
-            };
+            return (new JwtSecurityTokenHandler().WriteToken(token), token.ValidTo);
         }
 
-        public Task<bool> ChangePasswordAsync(PasswordChangeDto dto)
+        private async Task RevokeAllActiveTokensAsync(string userId, string? ipAddress)
         {
-            throw new NotImplementedException();
+            var activeTokens = await _UnitOfWork.RefreshToken.GetActiveByUserIdAsync(userId);
+
+            foreach (var token in activeTokens)
+            {
+                token.Revoked = DateTime.UtcNow;
+                token.RevokedByIp = ipAddress;
+
+                _UnitOfWork.RefreshToken.Update(token);
+            }
+
+            await _UnitOfWork.SaveChangesAsync();
         }
 
-        public async Task<ResponseUserDto> CreateUserAsync(UserDto dto)
+        private static string DecodeToken(string encodedToken)
         {
-            var existingUser = await _UnitOfWork.User.GetUserByEmailAsync(dto.Email!);
-
-            if (existingUser != null)
+            try
             {
-                throw new Exception("A user with this email already exists.");
+                return Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(encodedToken));
             }
-
-            var passwordHasher = new PasswordHasher<ApplicationUser>();
-
-            var user = _Mapper.Map<ApplicationUser>(dto);
-
-            user.Password = passwordHasher.HashPassword(user, dto.Password!);
-
-            user.Id = Guid.NewGuid().ToString();
-            user.CreationTime = DateTime.Now;
-            user.UserName = dto.Email;
-            user.PhoneNumber = dto.WhatsAppNumber;
-
-            var role = await _UnitOfWork.User.GetUserRole(dto.Role ?? "User");
-
-            if (role == null)
+            catch (FormatException)
             {
-                throw new Exception("Specified role does not exist.");
+                throw new ValidationException("The token is not valid.");
             }
-
-            if (!await _RoleManager.RoleExistsAsync(role))
+            catch (ArgumentException)
             {
-                var newRole = new IdentityRole(role);
-
-                await _RoleManager.CreateAsync(newRole);
-            }
-
-            var result = await _UserManager.CreateAsync(user);
-
-            if (!result.Succeeded)
-            {
-                var errors = string.Join(", ", result.Errors.Select(e => e.Description));
-
-                throw new Exception($"Failed to create user: {errors}");
-            }
-
-            var token = await _UserManager.GenerateEmailConfirmationTokenAsync(user);
-
-            var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
-            var encodedUserId = Uri.EscapeDataString(user.Id);
-
-            //var callbackUrl = $"{_Configuration["AppSettings:ClientUrl"]}/confirm-email?userId={encodedUserId}&token={encodedToken}";
-
-            //var emailData = new EmailSenderDto
-            //{
-            //    callbackUrl = callBackUrl,
-            //    Email = user.Email,
-            //    Role = dto.Role,
-            //    FullName = user.FullName,
-            //    Password = dto.Password
-            //}
-
-            if (role == "Supplier")
-            {
-                var supplier = _Mapper.Map<Supplier>(dto);
-                supplier.SupplierId = Guid.Parse(user.Id);
-                supplier.CreatedAt = user.CreationTime;
-                await _UnitOfWork.Supplier.AddAsync(supplier);
-                await _UnitOfWork.SaveChangesAsyc();
-
-                var userWithToken = await UserRole(user, role);
-
-                return userWithToken;
-            }
-            else if (role == "SpazaOwner")
-            {
-                var shopOwner = _Mapper.Map<ShopsOwner>(dto);
-                shopOwner.ShopOwnerId = Guid.Parse(user.Id);
-                shopOwner.CreatedAt = user.CreationTime;
-                await _UnitOfWork.ShopOwner.AddAsync(shopOwner);
-                await _UnitOfWork.SaveChangesAsyc();
-
-                var userWithToken = await UserRole(user, role);
-
-                return userWithToken;
-            }
-            else if (role == "Driver")
-            {
-                var driver = _Mapper.Map<Drivers>(dto);
-                driver.DriverId = Guid.Parse(user.Id);
-                driver.CreationTime = user.CreationTime;
-                await _UnitOfWork.Driver.AddAsync(driver);
-                await _UnitOfWork.SaveChangesAsyc();
-
-                var userWithToken = await UserRole(user, role);
-
-                return userWithToken;
-            }
-            else
-            {
-                throw new Exception("User created successfully, but email sending is not implemented in this example. Please implement email sending to complete the registration process.");
+                throw new ValidationException("The token is not valid.");
             }
         }
 
-        private async Task<ResponseUserDto> UserRole(ApplicationUser user, string role)
+        private static string GenerateRefreshTokenValue()
         {
-            var isInRole = await _UserManager.IsInRoleAsync(user, role);
-
-            if (!isInRole)
-            {
-                var addToRoleResult = await _UserManager.AddToRoleAsync(user, role);
-
-                if (!addToRoleResult.Succeeded)
-                {
-                    await _UserManager.DeleteAsync(user);
-
-                    var errors = string.Join(", ", addToRoleResult.Errors.Select(e => e.Description));
-                    throw new Exception($"Failed to assign role to user: {errors}");
-                }
-            }
-
-            var userRoles = await _UserManager.GetRolesAsync(user);
-            var userDto = _Mapper.Map<UserDto>(user);
-            userDto.Roles = userRoles.ToList();
-
-            var userWithToken = await GenerateTokenAsycAsync(userDto);
-
-            return userWithToken;
+            return Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
         }
 
-        public Task<bool> EmailConfirmationAsync(string userId, string token)
+        private static string HashToken(string token)
         {
-            throw new NotImplementedException();
-        }
-
-        public Task<string> GeneratePasswordResetTOkenRepositoryAsnc(string email)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task<UserDto> UpdateUserAsync(string userId, UserDto dto, string token = null!)
-        {
-            throw new NotImplementedException();
+            return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
         }
     }
 }

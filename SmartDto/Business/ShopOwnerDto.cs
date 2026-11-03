@@ -4,7 +4,7 @@ namespace SmartDto.Business
 {
     public class ShopOwnerDto
     {
-        public Guid ShopOnwerId { get; set; }
+        public Guid ShopOwnerId { get; set; }
 
         public string? NameOfTheShops { get; set; }
 

@@ -14,14 +14,16 @@ namespace SmartRepository
             _Context = context ??  throw new ArgumentNullException(nameof(context));
         }
 
-        public Task<ApplicationUser?> CheckEmailConfirmationAsync(string userId)
+        public async Task<ApplicationUser?> CheckEmailConfirmationAsync(string userId)
         {
-            throw new NotImplementedException();
+            return await _Context.User.FirstOrDefaultAsync(u => u.Id == userId && u.EmailConfirmed);
         }
 
-        public Task<IEnumerable<ApplicationUser>> GetAllActiveUserAsync()
+        public async Task<IEnumerable<ApplicationUser>> GetAllActiveUserAsync()
         {
-            throw new NotImplementedException();
+            return await _Context.User
+                .Where(u => u.LockoutEnd == null || u.LockoutEnd <= DateTimeOffset.UtcNow)
+                .ToListAsync();
         }
 
         public async Task<ApplicationUser?> GetUserByEmailAsync(string email)
@@ -29,9 +31,9 @@ namespace SmartRepository
             return await _Context.User.FirstOrDefaultAsync(u => u.Email == email);
         }
 
-        public Task<ApplicationUser?> GetUserByIdAsync(string userId)
+        public async Task<ApplicationUser?> GetUserByIdAsync(string userId)
         {
-            throw new NotImplementedException();
+            return await _Context.User.FirstOrDefaultAsync(u => u.Id == userId);
         }
 
         public async Task<string?> GetUserRole(string role)
@@ -41,9 +43,12 @@ namespace SmartRepository
                                        .FirstOrDefaultAsync();
         }
 
-        public Task<string?> GetUserRoleByUserIdAsync(string email)
+        public async Task<string?> GetUserRoleByUserIdAsync(string userId)
         {
-            throw new NotImplementedException();
+            return await (from userRole in _Context.UserRoles
+                          join role in _Context.Roles on userRole.RoleId equals role.Id
+                          where userRole.UserId == userId
+                          select role.Name).FirstOrDefaultAsync();
         }
     }
 }

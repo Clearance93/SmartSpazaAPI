@@ -1,0 +1,19 @@
+# Production TLS termination example for SmartSpazaAPI.
+#
+# Caddy obtains and renews a trusted certificate automatically for the public hostname and forwards
+# requests to the API over the private Docker network. The API must trust the proxy IP via
+# ForwardedHeaders__KnownProxies__0 and keep Https__RequireHttps=true. Do not publish port 8080.
+#
+# Example:
+#   api.example.com {
+#       encode zstd gzip
+#       reverse_proxy api:8080
+#   }
+
+api.example.com {
+    encode zstd gzip
+
+    # Caddy sets X-Forwarded-For and X-Forwarded-Proto. Make sure the proxy is the only route to
+    # the API and that the API trusts this proxy's IP.
+    reverse_proxy api:8080
+}
