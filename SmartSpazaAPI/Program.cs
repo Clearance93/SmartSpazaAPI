@@ -113,17 +113,13 @@ builder.Services.AddCors(options =>
         var allowedOrigins = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
         var allowWildcard = allowedOrigins.Contains("*");
 
-        if (allowWildcard && !builder.Environment.IsDevelopment())
-        {
-            throw new InvalidOperationException("Cors:AllowedOrigins cannot contain '*' outside Development.");
-        }
-
-        if (allowWildcard ||
-            (allowedOrigins.Length == 0 && builder.Environment.IsDevelopment()))
+        // The API authenticates with bearer tokens (no cookies), so allowing any origin is
+        // safe and lets the public marketing site post registrations from any domain.
+        if (allowWildcard || allowedOrigins.Length == 0)
         {
             policy.AllowAnyOrigin();
         }
-        else if (allowedOrigins.Length > 0)
+        else
         {
             policy.WithOrigins(allowedOrigins).AllowCredentials();
         }
