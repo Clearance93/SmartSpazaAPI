@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
@@ -268,8 +269,16 @@ else if (!app.Environment.IsDevelopment())
 app.UseMiddleware<ExceptionConfigurations>();
 
 // Serve the hosted Angular SPA (files copied into wwwroot by the UI build).
+// .apk is not in the default MIME table, so the Android scanner download would 404
+// without this mapping.
+var staticFileContentTypes = new FileExtensionContentTypeProvider();
+staticFileContentTypes.Mappings[".apk"] = "application/vnd.android.package-archive";
+
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    ContentTypeProvider = staticFileContentTypes
+});
 
 if (swaggerEnabled)
 {
