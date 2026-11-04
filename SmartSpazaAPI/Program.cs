@@ -268,6 +268,20 @@ else if (!app.Environment.IsDevelopment())
 
 app.UseMiddleware<ExceptionConfigurations>();
 
+// API payloads are per-user; never let a CDN, proxy or browser cache them.
+// (The HTTPS deployment sits behind Netlify's edge proxy, which would otherwise
+// be free to cache one shop owner's catalogue and serve it to another.)
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/api"))
+    {
+        context.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
+        context.Response.Headers.Pragma = "no-cache";
+    }
+
+    await next();
+});
+
 // Serve the hosted Angular SPA (files copied into wwwroot by the UI build).
 // .apk is not in the default MIME table, so the Android scanner download would 404
 // without this mapping.
