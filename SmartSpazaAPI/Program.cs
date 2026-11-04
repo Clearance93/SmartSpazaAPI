@@ -184,7 +184,7 @@ builder.Services.AddRateLimiter(options =>
             _ => new FixedWindowRateLimiterOptions
             {
                 Window = TimeSpan.FromMinutes(1),
-                PermitLimit = 10,
+                PermitLimit = 30,
                 QueueLimit = 0
             }));
 
@@ -194,7 +194,7 @@ builder.Services.AddRateLimiter(options =>
             _ => new FixedWindowRateLimiterOptions
             {
                 Window = TimeSpan.FromMinutes(1),
-                PermitLimit = 200,
+                PermitLimit = 600,
                 QueueLimit = 0
             }));
 });
