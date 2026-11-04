@@ -96,6 +96,8 @@ namespace SmartDto.Delivery
 
         public int ProductCount { get; set; }
 
+        public int OrderCount { get; set; }
+
         public decimal StockValue { get; set; }
     }
 }

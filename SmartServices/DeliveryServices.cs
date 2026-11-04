@@ -250,7 +250,14 @@ namespace SmartServices
 
         public async Task<IEnumerable<ShopSupplierDto>> GetShopSuppliersAsync(Guid shopId)
         {
-            var supplierIds = (await _UnitOfWork.Product.GetSupplierIdsForShopAsync(shopId)).ToList();
+            var fromCatalogue = await _UnitOfWork.Product.GetSupplierIdsForShopAsync(shopId);
+            var fromDeliveries = (await _UnitOfWork.Delivery.GetByShopIdAsync(shopId))
+                .Select(delivery => delivery.SupplierId);
+
+            var supplierIds = fromCatalogue
+                .Concat(fromDeliveries)
+                .Distinct()
+                .ToList();
 
             if (supplierIds.Count == 0)
             {
@@ -259,6 +266,7 @@ namespace SmartServices
 
             // Only this shop's own catalogue, used to show each supplier's footprint.
             var catalogue = (await _UnitOfWork.Product.GetPagedActiveProductsAsync(1, 1000, shopId)).Items.ToList();
+            var deliveries = (await _UnitOfWork.Delivery.GetByShopIdAsync(shopId)).ToList();
 
             var suppliers = new List<ShopSupplierDto>(supplierIds.Count);
 
@@ -285,6 +293,7 @@ namespace SmartServices
                     Ratings = supplier.Ratings,
                     TotalOrders = supplier.TotalOrders,
                     ProductCount = supplied.Count,
+                    OrderCount = deliveries.Count(delivery => delivery.SupplierId == supplierId),
                     StockValue = supplied.Sum(product => product.Price * product.StockQuantity)
                 });
             }
