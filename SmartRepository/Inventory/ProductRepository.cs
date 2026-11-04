@@ -46,5 +46,21 @@ namespace SmartRepository.Inventory
 
             return (items, totalCount);
         }
+
+        /// <summary>
+        /// Distinct suppliers that actually supply this shop's catalogue. Used by the
+        /// retailer's Suppliers page so it never lists unrelated businesses.
+        /// </summary>
+        public async Task<IEnumerable<Guid>> GetSupplierIdsForShopAsync(Guid shopId)
+        {
+            return await _Context.Products
+                                 .AsNoTracking()
+                                 .Where(product => !product.IsDeleted &&
+                                                   product.ShopOwnerId == shopId &&
+                                                   product.SupplierId != null)
+                                 .Select(product => product.SupplierId!.Value)
+                                 .Distinct()
+                                 .ToListAsync();
+        }
     }
 }

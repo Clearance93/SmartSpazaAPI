@@ -24,6 +24,15 @@ namespace SmartRepository.Deliveries
                                  .ToListAsync();
         }
 
+        public async Task<IEnumerable<Delivery>> GetByShopIdAsync(Guid shopId)
+        {
+            return await _Context.Deliveries
+                                 .AsNoTracking()
+                                 .Where(delivery => delivery.ShopId == shopId)
+                                 .OrderByDescending(delivery => delivery.CreationTime)
+                                 .ToListAsync();
+        }
+
         public async Task<IEnumerable<Delivery>> GetActiveByDriverIdAsync(Guid driverId)
         {
             return await _Context.Deliveries

@@ -7,5 +7,7 @@ namespace SmartInterfaces.IRepository.IInventory
         Task<Product?> GetByBarcodeAsync(string barcode, Guid ownerId);
 
         Task<(IEnumerable<Product> Items, int TotalCount)> GetPagedActiveProductsAsync(int page, int pageSize, Guid ownerId);
+
+        Task<IEnumerable<Guid>> GetSupplierIdsForShopAsync(Guid shopId);
     }
 }

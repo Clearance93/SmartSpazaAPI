@@ -22,5 +22,20 @@ namespace SmartRepository.Deliveries
                                  .OrderByDescending(tracking => tracking.Updated ?? tracking.CreationTime)
                                  .ToListAsync();
         }
+
+        public async Task<IEnumerable<DeliveryTracking>> GetByDeliveryIdsAsync(IReadOnlyCollection<Guid> deliveryIds)
+        {
+            if (deliveryIds.Count == 0)
+            {
+                return Array.Empty<DeliveryTracking>();
+            }
+
+            return await _Context.DeliveryTracking
+                                 .AsNoTracking()
+                                 .Where(tracking => tracking.DeliveryId.HasValue &&
+                                                    deliveryIds.Contains(tracking.DeliveryId.Value))
+                                 .OrderByDescending(tracking => tracking.Updated ?? tracking.CreationTime)
+                                 .ToListAsync();
+        }
     }
 }

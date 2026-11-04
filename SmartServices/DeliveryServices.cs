@@ -174,6 +174,127 @@ namespace SmartServices
             return _Mapper.Map<IEnumerable<DeliveryDto>>(driverDeliveries);
         }
 
+        public async Task<IEnumerable<ShopOrderDto>> GetShopOrdersAsync(Guid shopId)
+        {
+            var deliveries = (await _UnitOfWork.Delivery.GetByShopIdAsync(shopId)).ToList();
+
+            if (deliveries.Count == 0)
+            {
+                return Array.Empty<ShopOrderDto>();
+            }
+
+            var deliveryIds = deliveries.Select(delivery => delivery.DeliveryId).ToList();
+            var tracking = (await _UnitOfWork.DeliveryTracking.GetByDeliveryIdsAsync(deliveryIds)).ToList();
+            var ratings = (await _UnitOfWork.DeliveryRatings.GetByShopIdAsync(shopId)).ToList();
+
+            var orders = new List<ShopOrderDto>(deliveries.Count);
+
+            foreach (var delivery in deliveries)
+            {
+                var supplier = await _UnitOfWork.Supplier.GetByIdAsync(delivery.SupplierId);
+                var driver = await _UnitOfWork.Driver.GetByIdAsync(delivery.DriverId);
+                var items = await _UnitOfWork.DeliveryItems.GetAllDeliveryItemsByDeliveryId(delivery.DeliveryId);
+
+                var latestTracking = tracking
+                    .Where(point => point.DeliveryId == delivery.DeliveryId)
+                    .OrderByDescending(point => point.Updated ?? point.CreationTime)
+                    .FirstOrDefault();
+
+                var rating = ratings.FirstOrDefault(entry => entry.DeliveryId == delivery.DeliveryId);
+
+                orders.Add(new ShopOrderDto
+                {
+                    DeliveryId = delivery.DeliveryId,
+                    DeliveryNumber = delivery.DeliveryNumber,
+                    Status = delivery.DeliveryStatus.ToString(),
+                    Priority = delivery.Priority,
+                    ScheduledTime = FormatTime(delivery.ScheduledTime),
+                    EstimatedArrival = FormatTime(delivery.EstimatedArrival),
+                    ActualArrival = FormatTime(delivery.ActualArrival),
+                    CreationTime = delivery.CreationTime,
+                    Notes = delivery.Notes,
+                    SupplierId = delivery.SupplierId,
+                    SupplierName = supplier?.SupplierName ?? supplier?.ContactName,
+                    SupplierPhone = supplier?.ContactNumber,
+                    DriverId = delivery.DriverId,
+                    DriverName = driver?.FullName,
+                    DriverPhone = driver?.PhoneNumbers,
+                    Rating = rating?.Ratings,
+                    RatingComment = rating?.Comments,
+                    Items = items
+                        .Where(item => !item.IsDeleted)
+                        .Select(item => new ShopOrderItemDto
+                        {
+                            ProductName = item.ProductName,
+                            Quantity = item.Quantity,
+                            Unit = item.Unit,
+                            Weight = item.Weight
+                        })
+                        .ToList(),
+                    Tracking = latestTracking == null
+                        ? null
+                        : new ShopOrderTrackingDto
+                        {
+                            Status = latestTracking.DeliveryStatus.ToString(),
+                            Latitude = latestTracking.Latitude,
+                            Longitude = latestTracking.Longitude,
+                            DistanceRemaining = latestTracking.DistanceRemaining,
+                            EstimatedTime = FormatTime(latestTracking.EstimatedTime),
+                            Updated = latestTracking.Updated ?? latestTracking.CreationTime
+                        }
+                });
+            }
+
+            return orders;
+        }
+
+        public async Task<IEnumerable<ShopSupplierDto>> GetShopSuppliersAsync(Guid shopId)
+        {
+            var supplierIds = (await _UnitOfWork.Product.GetSupplierIdsForShopAsync(shopId)).ToList();
+
+            if (supplierIds.Count == 0)
+            {
+                return Array.Empty<ShopSupplierDto>();
+            }
+
+            // Only this shop's own catalogue, used to show each supplier's footprint.
+            var catalogue = (await _UnitOfWork.Product.GetPagedActiveProductsAsync(1, 1000, shopId)).Items.ToList();
+
+            var suppliers = new List<ShopSupplierDto>(supplierIds.Count);
+
+            foreach (var supplierId in supplierIds)
+            {
+                var supplier = await _UnitOfWork.Supplier.GetByIdAsync(supplierId);
+
+                if (supplier == null)
+                {
+                    continue;
+                }
+
+                var supplied = catalogue.Where(product => product.SupplierId == supplierId).ToList();
+
+                suppliers.Add(new ShopSupplierDto
+                {
+                    SupplierId = supplierId,
+                    SupplierName = supplier.SupplierName,
+                    ContactName = supplier.ContactName,
+                    Email = supplier.Email,
+                    ContactNumber = supplier.ContactNumber,
+                    Address = supplier.Address,
+                    LogoUrl = supplier.LogoUrl,
+                    Ratings = supplier.Ratings,
+                    TotalOrders = supplier.TotalOrders,
+                    ProductCount = supplied.Count,
+                    StockValue = supplied.Sum(product => product.Price * product.StockQuantity)
+                });
+            }
+
+            return suppliers;
+        }
+
+        private static string? FormatTime(TimeOnly value) =>
+            value == default ? null : value.ToString("HH:mm");
+
         public async Task<IEnumerable<DeliveryRatingsDto>> GetAllDeliveryRecordsAsync(Guid driverId)
         {
             var driver = await _UnitOfWork.Driver.GetByIdAsync(driverId);
