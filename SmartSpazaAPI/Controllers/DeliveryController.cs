@@ -140,6 +140,15 @@ namespace SmartSpazaAPI.Controllers
             return Ok(suppliers);
         }
 
+        [HttpGet("driverOrders")]
+        [Authorize(Policy = "DriverOnly")]
+        public async Task<IActionResult> GetDriverOrders()
+        {
+            var orders = await _Delivery.GetDriverOrdersAsync(CurrentProfileId);
+
+            return Ok(orders);
+        }
+
         [HttpGet("driverDeliveries")]
         [HttpGet("driverDelivaries")]
         [Authorize(Policy = "DriverOnly")]

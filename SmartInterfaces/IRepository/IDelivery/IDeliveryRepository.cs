@@ -9,5 +9,7 @@ namespace SmartInterfaces.IRepository.IDelivery
         Task<IEnumerable<Delivery>> GetByShopIdAsync(Guid shopId);
 
         Task<IEnumerable<Delivery>> GetActiveByDriverIdAsync(Guid driverId);
+
+        Task<IEnumerable<Delivery>> GetByDriverIdAsync(Guid driverId);
     }
 }
