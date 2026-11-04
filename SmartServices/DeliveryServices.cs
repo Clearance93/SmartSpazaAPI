@@ -301,6 +301,82 @@ namespace SmartServices
             return suppliers;
         }
 
+        public async Task<IEnumerable<SupplierOrderDto>> GetSupplierOrdersAsync(Guid supplierId)
+        {
+            var deliveries = (await _UnitOfWork.Delivery.GetBySupplierIdAsync(supplierId)).ToList();
+
+            if (deliveries.Count == 0)
+            {
+                return Array.Empty<SupplierOrderDto>();
+            }
+
+            var deliveryIds = deliveries.Select(delivery => delivery.DeliveryId).ToList();
+            var tracking = (await _UnitOfWork.DeliveryTracking.GetByDeliveryIdsAsync(deliveryIds)).ToList();
+            var ratings = (await _UnitOfWork.DeliveryRatings.GetByDeliveryIdsAsync(deliveryIds)).ToList();
+
+            var orders = new List<SupplierOrderDto>(deliveries.Count);
+
+            foreach (var delivery in deliveries)
+            {
+                var shop = await _UnitOfWork.ShopOwner.GetByIdAsync(delivery.ShopId);
+                var driver = await _UnitOfWork.Driver.GetByIdAsync(delivery.DriverId);
+                var items = await _UnitOfWork.DeliveryItems.GetAllDeliveryItemsByDeliveryId(delivery.DeliveryId);
+
+                var latestTracking = tracking
+                    .Where(point => point.DeliveryId == delivery.DeliveryId)
+                    .OrderByDescending(point => point.Updated ?? point.CreationTime)
+                    .FirstOrDefault();
+
+                var rating = ratings.FirstOrDefault(entry => entry.DeliveryId == delivery.DeliveryId);
+
+                orders.Add(new SupplierOrderDto
+                {
+                    DeliveryId = delivery.DeliveryId,
+                    DeliveryNumber = delivery.DeliveryNumber,
+                    Status = delivery.DeliveryStatus.ToString(),
+                    Priority = delivery.Priority,
+                    ScheduledTime = FormatTime(delivery.ScheduledTime),
+                    EstimatedArrival = FormatTime(delivery.EstimatedArrival),
+                    ActualArrival = FormatTime(delivery.ActualArrival),
+                    CreationTime = delivery.CreationTime,
+                    Notes = delivery.Notes,
+                    ShopId = delivery.ShopId,
+                    ShopName = shop?.NameOfTheShops ?? shop?.OwnerName,
+                    ShopOwnerName = shop?.OwnerName,
+                    ShopPhone = shop?.PhoneNumber,
+                    ShopEmail = shop?.Email,
+                    DriverId = delivery.DriverId,
+                    DriverName = driver?.FullName,
+                    DriverPhone = driver?.PhoneNumbers,
+                    Rating = rating?.Ratings,
+                    RatingComment = rating?.Comments,
+                    Items = items
+                        .Where(item => !item.IsDeleted)
+                        .Select(item => new ShopOrderItemDto
+                        {
+                            ProductName = item.ProductName,
+                            Quantity = item.Quantity,
+                            Unit = item.Unit,
+                            Weight = item.Weight
+                        })
+                        .ToList(),
+                    Tracking = latestTracking == null
+                        ? null
+                        : new ShopOrderTrackingDto
+                        {
+                            Status = latestTracking.DeliveryStatus.ToString(),
+                            Latitude = latestTracking.Latitude,
+                            Longitude = latestTracking.Longitude,
+                            DistanceRemaining = latestTracking.DistanceRemaining,
+                            EstimatedTime = FormatTime(latestTracking.EstimatedTime),
+                            Updated = latestTracking.Updated ?? latestTracking.CreationTime
+                        }
+                });
+            }
+
+            return orders;
+        }
+
         private static string? FormatTime(TimeOnly value) =>
             value == default ? null : value.ToString("HH:mm");
 

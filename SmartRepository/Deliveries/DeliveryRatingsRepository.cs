@@ -31,5 +31,19 @@ namespace SmartRepository.Deliveries
                                  .OrderByDescending(rating => rating.Created)
                                  .ToListAsync();
         }
+
+        public async Task<IEnumerable<DeliveryRatings>> GetByDeliveryIdsAsync(IReadOnlyCollection<Guid> deliveryIds)
+        {
+            if (deliveryIds.Count == 0)
+            {
+                return Array.Empty<DeliveryRatings>();
+            }
+
+            return await _Context.DeliveryRatings
+                                 .AsNoTracking()
+                                 .Where(rating => deliveryIds.Contains(rating.DeliveryId))
+                                 .OrderByDescending(rating => rating.Created)
+                                 .ToListAsync();
+        }
     }
 }

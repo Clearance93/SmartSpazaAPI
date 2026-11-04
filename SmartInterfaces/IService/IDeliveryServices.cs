@@ -30,6 +30,9 @@ namespace SmartInterfaces.IService
         /// <summary>Suppliers whose products are in the shop's catalogue.</summary>
         Task<IEnumerable<ShopSupplierDto>> GetShopSuppliersAsync(Guid shopId);
 
+        /// <summary>Deliveries dispatched by a supplier, enriched for the supplier portal.</summary>
+        Task<IEnumerable<SupplierOrderDto>> GetSupplierOrdersAsync(Guid supplierId);
+
         Task<SupplierDto> GetSupplierByIdAsync(Guid supplierId);
 
         Task<ShopOwnerDto> GetShopOwnerByIdAsync(Guid shopId);

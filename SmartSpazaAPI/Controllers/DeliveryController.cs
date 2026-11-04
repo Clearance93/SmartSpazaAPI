@@ -113,6 +113,15 @@ namespace SmartSpazaAPI.Controllers
             return Ok(deliveries);
         }
 
+        [HttpGet("supplierOrders")]
+        [Authorize(Policy = "SupplierOnly")]
+        public async Task<IActionResult> GetSupplierOrders()
+        {
+            var orders = await _Delivery.GetSupplierOrdersAsync(CurrentProfileId);
+
+            return Ok(orders);
+        }
+
         [HttpGet("shopOrders")]
         [Authorize(Policy = "SpazaOwnerOnly")]
         public async Task<IActionResult> GetShopOrders()
